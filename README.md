@@ -2,7 +2,7 @@
 
 The OpenPak mod catalogue: cosmetic and local mods per title, installed by an emulator with one
 tap, with provenance and licence recorded for every package and no game assets ever hosted.
-PRD: `../prds/mods-prd.md`. Status: **M1 built** (catalogue, package store, provenance gate,
+PRD: `prds/mods-prd.md`. Status: **M1 built** (catalogue, package store, provenance gate,
 manifest API) plus favourites and takedown; curation is an internal API until the website grows
 its pages (M2); the Citron client (M3) is not started.
 
