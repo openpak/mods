@@ -5,7 +5,7 @@ name: release
 # is the deploy. The Dockerfile cross-compiles, so no QEMU.
 on:
   push:
-    tags: ['v*']
+    tags: ['v*.*.*']
   workflow_dispatch:
 
 permissions:
