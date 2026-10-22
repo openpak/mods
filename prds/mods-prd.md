@@ -1,5 +1,13 @@
 # OpenPak mods PRD
 
+> **Current Switch client (2026-10-13): Harbor**, at
+> `~/REPOS/Openpak/emulators/harbor`. Harbor is an independent
+> OpenPak project based on Eden. Citron, Ryujinx (desktop and Android), and
+> the former OpenPak Eden checkouts have been removed. References to those
+> forks below record historical evidence only: do not run their commands,
+> reinstall them, or select them for current work. Use Harbor's README and
+> current handoff for builds and testing; old results do not establish Harbor parity.
+
 Status: **M1 built and deployed 2026-09-11** (repo `mods`, proxied under openpak.org/api/v1); curation is an internal API until M2; M3 (Citron client) not started. Original brief (2026-09-07):
 
 ## 1. Product objective
@@ -16,7 +24,7 @@ favourites and for the website hosting the browsing and curation pages. Console 
 
 ## 3. Evidence and current baseline
 
-Observed earlier (evidence only): per-title manifest listing mods, per-mod zip streamed to
+Earlier research notes (evidence only): per-title manifest listing mods, per-mod zip streamed to
 the client, bearer-gated, client extracts into the game's mod folder; admin-curated,
 cosmetic and local only; GameBanana favourites. Citron calls `/api/mods/` and a favourites
 route.
@@ -38,10 +46,7 @@ tools, ratings and comments, console delivery.
 
 ## 6. Independent implementation rules (apply verbatim)
 
-- Every earlier network repository is source-available; its noncompete clause forbids
-  using that code in a competing product. earlier code, routes, schemas and prose are
-  **evidence of observable behaviour only**, never implementation input. Do not copy,
-  translate, or structurally mirror them. Cite them as evidence, then design from scratch.
+- OpenPak servers are AGPL-3.0-only and OpenPak-authored.
 - Go 1.26, module `github.com/openpak/<repo>`, AGPL-3.0-only, `LICENSE` verbatim from
   gnu.org. Server-rendered templates and minimal browser JavaScript for web surfaces.
   Native mobile code is the recorded non-Go exception.
@@ -95,5 +100,5 @@ HTTP API for emulators (website token model), gRPC for the website's curation pa
 
 ## 12. Evidence references
 
-Reference handler doc comments (behaviour only): manifest plus zip streaming, bearer-gated,
+Earlier research notes (behaviour only): manifest plus zip streaming, bearer-gated,
 cosmetic and local; Citron client paths.
