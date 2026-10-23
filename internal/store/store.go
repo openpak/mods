@@ -203,3 +203,63 @@ func (s *Store) RemoveFavourite(ctx context.Context, accountID, modID string) er
 func (s *Store) Submitted(ctx context.Context, accountID string) ([]*Mod, error) {
 	return s.list(ctx, `submitted_by=$1`, accountID)
 }
+
+// DeletedUser is who an erased account's published mods are credited to.
+const DeletedUser = "deleted user"
+
+// Erasure counts what EraseAccount did.
+type Erasure struct {
+	Anonymised int64 `json:"anonymised"` // published (or replaced) versions kept, credited to DeletedUser
+	Deleted    int64 `json:"deleted"`    // pending, rejected and taken-down submissions removed
+	Favourites int64 `json:"favourites"` // favourite rows removed
+}
+
+// UnpublishedBy lists the ids of the account's submissions that never went
+// live or no longer are: what EraseAccount deletes. The caller removes their
+// package files first, so a retry still finds them.
+func (s *Store) UnpublishedBy(ctx context.Context, accountID string) ([]string, error) {
+	rows, err := s.pool.Query(ctx, `SELECT id FROM mods WHERE submitted_by=$1 AND status IN ('pending','rejected','taken_down')`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// EraseAccount applies the erasure rule (owner decision 2026-10-23): versions
+// that were published stay, credited to DeletedUser and tied to no account;
+// unpublished submissions and the account's favourites are deleted.
+// Idempotent: a second call finds nothing and changes nothing.
+func (s *Store) EraseAccount(ctx context.Context, accountID string) (Erasure, error) {
+	var e Erasure
+	if accountID == "" {
+		return e, errors.New("store: empty account id")
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return e, err
+	}
+	defer tx.Rollback(ctx)
+	tag, err := tx.Exec(ctx, `DELETE FROM favourites WHERE account_id=$1`, accountID)
+	if err != nil {
+		return e, err
+	}
+	e.Favourites = tag.RowsAffected()
+	if tag, err = tx.Exec(ctx, `DELETE FROM mods WHERE submitted_by=$1 AND status IN ('pending','rejected','taken_down')`, accountID); err != nil {
+		return e, err
+	}
+	e.Deleted = tag.RowsAffected()
+	if tag, err = tx.Exec(ctx, `UPDATE mods SET submitted_by='', author=$2 WHERE submitted_by=$1 AND status IN ('published','replaced')`, accountID, DeletedUser); err != nil {
+		return e, err
+	}
+	e.Anonymised = tag.RowsAffected()
+	return e, tx.Commit(ctx)
+}

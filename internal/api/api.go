@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -45,6 +46,7 @@ func New(st *store.Store, dataDir, websiteURL, internalKey string) *Server {
 	m.HandleFunc("POST /internal/mods/{id}/publish", s.internal(s.handleDecision))
 	m.HandleFunc("POST /internal/mods/{id}/reject", s.internal(s.handleDecision))
 	m.HandleFunc("POST /internal/mods/{id}/takedown", s.internal(s.handleDecision))
+	m.HandleFunc("DELETE /internal/accounts/{account}/mods", s.internal(s.handleEraseAccount))
 	return s
 }
 
@@ -349,6 +351,40 @@ func (s *Server) handleDecision(w http.ResponseWriter, r *http.Request) {
 	}
 	m, _ := s.st.Get(r.Context(), id)
 	writeJSON(w, view(m, true))
+}
+
+// ---- account erasure (the website finaliser, after the deletion grace period) ----
+
+// handleEraseAccount keeps the account's published mods, credited to
+// "deleted user", and deletes its unpublished submissions (rows and package
+// files) and favourites. Files go first, so a failure leaves the rows for the
+// retry to find. Idempotent: 200 {"anonymised","deleted","favourites"}.
+func (s *Server) handleEraseAccount(w http.ResponseWriter, r *http.Request) {
+	account := r.PathValue("account")
+	if account == "" {
+		fail(w, 400, "account is required")
+		return
+	}
+	ids, err := s.st.UnpublishedBy(r.Context(), account)
+	if err != nil {
+		log.Printf("erase %s: list: %v", account, err)
+		fail(w, 500, "internal error")
+		return
+	}
+	for _, id := range ids {
+		if err := os.Remove(s.packagePath(id)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			log.Printf("erase %s: package %s: %v", account, id, err)
+			fail(w, 503, "could not delete a package; retry")
+			return
+		}
+	}
+	res, err := s.st.EraseAccount(r.Context(), account)
+	if err != nil {
+		log.Printf("erase %s: %v", account, err)
+		fail(w, 500, "internal error")
+		return
+	}
+	writeJSON(w, res)
 }
 
 func writeJSON(w http.ResponseWriter, v any) {
