@@ -1,5 +1,13 @@
 # mods
 
+> **Current Switch client (2026-10-13): Harbor**, at
+> `~/REPOS/Openpak/emulators/harbor`. Harbor is an independent
+> OpenPak project based on Eden. Citron, Ryujinx (desktop and Android), and
+> the former OpenPak Eden checkouts have been removed. References to those
+> forks below record historical evidence only: do not run their commands,
+> reinstall them, or select them for current work. Use Harbor's README and
+> current handoff for builds and testing; old results do not establish Harbor parity.
+
 The OpenPak mod catalogue: cosmetic and local mods per title, installed by an emulator with one
 tap, with provenance and licence recorded for every package and no game assets ever hosted.
 PRD: `prds/mods-prd.md`. Status: **M1 built** (catalogue, package store, provenance gate,
