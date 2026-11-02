@@ -32,8 +32,8 @@ Ports, environment and image are in [Deploy](docs/deploy.md).
 
 - [Protocol](docs/protocol.md)
 - [Deploy](docs/deploy.md)
-- [Notes](docs/notes.md)
-- [Docs index](docs/README.md)
+
+PRDs: openpak/prds (private)
 
 ## Licence
 
