@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/openpak/mods/internal/api"
+	"github.com/openpak/mods/internal/httplog"
 	"github.com/openpak/mods/internal/store"
 )
 
@@ -42,5 +43,5 @@ func main() {
 	srv := api.New(store.New(pool), envOr("MODS_DATA", "/app/data"), envOr("WEBSITE_URL", "https://openpak.org"), key)
 	addr := envOr("MODS_HTTP_ADDR", ":20030")
 	log.Printf("mods listening %s", addr)
-	log.Fatal(http.ListenAndServe(addr, srv))
+	log.Fatal(http.ListenAndServe(addr, httplog.Middleware(srv)))
 }
