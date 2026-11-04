@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
-	"path/filepath"
 	"testing"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,30 +26,26 @@ func TestEraseAccount(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer pool.Close()
-	if _, err := pool.Exec(ctx, `DROP TABLE IF EXISTS favourites, mods, schema_migrations`); err != nil {
+	if _, err := pool.Exec(ctx, `DROP TABLE IF EXISTS favourites, mod_packages, mods, schema_migrations`); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.Migrate(ctx, pool); err != nil {
 		t.Fatal(err)
 	}
 	st := store.New(pool)
-	data := t.TempDir()
 	const key = "0123456789abcdef"
-	srv := New(st, data, "http://website.invalid", key)
+	srv := New(st, "http://website.invalid", key)
 
 	add := func(slug, by, status string) string {
 		m := &store.Mod{ID: store.NewID(), Slug: slug, TitleID: "0100000000010000", Name: slug, Version: "1", Author: "Real Name",
 			Licence: "MIT", SourceURL: "https://example.org", Layout: "romfs", SHA256: "00", Size: 1, SubmittedBy: by}
-		if err := st.Insert(ctx, m); err != nil {
+		if err := st.InsertWithPackage(ctx, m, []byte("zip")); err != nil {
 			t.Fatal(err)
 		}
 		if status != "pending" {
 			if _, err := pool.Exec(ctx, `UPDATE mods SET status=$2 WHERE id=$1`, m.ID, status); err != nil {
 				t.Fatal(err)
 			}
-		}
-		if err := os.WriteFile(filepath.Join(data, m.ID+".zip"), []byte("zip"), 0o644); err != nil {
-			t.Fatal(err)
 		}
 		return m.ID
 	}
@@ -96,7 +91,7 @@ func TestEraseAccount(t *testing.T) {
 		if m.SubmittedBy != "" || m.Author != store.DeletedUser {
 			t.Errorf("%s not anonymised: by %q author %q", id, m.SubmittedBy, m.Author)
 		}
-		if _, err := os.Stat(filepath.Join(data, id+".zip")); err != nil {
+		if _, err := st.Package(ctx, id); err != nil {
 			t.Errorf("published package %s removed: %v", id, err)
 		}
 	}
@@ -104,7 +99,7 @@ func TestEraseAccount(t *testing.T) {
 		if _, err := st.Get(ctx, id); err != store.ErrNotFound {
 			t.Errorf("unpublished %s survived: %v", id, err)
 		}
-		if _, err := os.Stat(filepath.Join(data, id+".zip")); !os.IsNotExist(err) {
+		if _, err := st.Package(ctx, id); err != store.ErrNotFound {
 			t.Errorf("unpublished package %s survived: %v", id, err)
 		}
 	}

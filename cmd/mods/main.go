@@ -40,7 +40,13 @@ func main() {
 	if err := store.Migrate(ctx, pool); err != nil {
 		log.Fatalf("migrate: %v", err)
 	}
-	srv := api.New(store.New(pool), envOr("MODS_DATA", "/app/data"), envOr("WEBSITE_URL", "https://openpak.org"), key)
+	st := store.New(pool)
+	imp, skip, err := st.ImportPackages(ctx, envOr("MODS_DATA", "/app/data"))
+	if err != nil {
+		log.Fatalf("package import: %v", err)
+	}
+	log.Printf("package import: %d imported, %d skipped", imp, skip)
+	srv := api.New(st, envOr("WEBSITE_URL", "https://openpak.org"), key)
 	addr := envOr("MODS_HTTP_ADDR", ":20030")
 	log.Printf("mods listening %s", addr)
 	log.Fatal(http.ListenAndServe(addr, httplog.Middleware(srv)))

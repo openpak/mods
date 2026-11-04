@@ -4,16 +4,14 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io"
-	"io/fs"
 	"log"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -24,14 +22,13 @@ import (
 
 type Server struct {
 	st          *store.Store
-	dataDir     string
 	internalKey string
 	auth        *websiteAuth
 	mux         *http.ServeMux
 }
 
-func New(st *store.Store, dataDir, websiteURL, internalKey string) *Server {
-	s := &Server{st: st, dataDir: dataDir, internalKey: internalKey, auth: newWebsiteAuth(websiteURL), mux: http.NewServeMux()}
+func New(st *store.Store, websiteURL, internalKey string) *Server {
+	s := &Server{st: st, internalKey: internalKey, auth: newWebsiteAuth(websiteURL), mux: http.NewServeMux()}
 	m := s.mux
 	m.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) { w.Write([]byte("ok")) })
 	m.HandleFunc("GET /api/v1/titles/{title}/mods", s.handleManifest)
@@ -193,18 +190,15 @@ func (s *Server) handlePackage(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
-	f, err := os.Open(s.packagePath(m.ID))
+	data, err := s.st.Package(r.Context(), m.ID)
 	if err != nil {
 		fail(w, 404, "package missing")
 		return
 	}
-	defer f.Close()
 	w.Header().Set("Content-Type", "application/zip")
 	w.Header().Set("Content-Disposition", `attachment; filename="`+m.Slug+"-"+m.Version+`.zip"`)
-	http.ServeContent(w, r, m.Slug+".zip", m.CreatedAt, f)
+	http.ServeContent(w, r, m.Slug+".zip", m.CreatedAt, bytes.NewReader(data))
 }
-
-func (s *Server) packagePath(id string) string { return filepath.Join(s.dataDir, id+".zip") }
 
 // ---- submission (MOD-01, MOD-02) ----
 
@@ -227,13 +221,13 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request, account st
 	}
 	m := &store.Mod{ID: store.NewID(), Slug: meta.ID, TitleID: meta.TitleID, Name: meta.Name, Version: meta.Version, Author: meta.Author,
 		Licence: meta.Licence, SourceURL: meta.Source, Layout: meta.Layout, Summary: meta.Summary, SHA256: sum, Size: hdr.Size, SubmittedBy: account}
-	if err := s.storePackage(m.ID, f, hdr.Size); err != nil {
-		log.Printf("submit: store package: %v", err)
+	data, err := io.ReadAll(io.NewSectionReader(f, 0, hdr.Size))
+	if err != nil {
+		log.Printf("submit: read package: %v", err)
 		fail(w, 500, "could not store the package")
 		return
 	}
-	if err := s.st.Insert(r.Context(), m); err != nil {
-		os.Remove(s.packagePath(m.ID))
+	if err := s.st.InsertWithPackage(r.Context(), m, data); err != nil {
 		log.Printf("submit: insert: %v", err)
 		fail(w, 500, "internal error")
 		return
@@ -241,27 +235,6 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request, account st
 	m.Status = "pending"
 	w.WriteHeader(http.StatusAccepted)
 	writeJSON(w, view(m, true))
-}
-
-func (s *Server) storePackage(id string, f io.ReaderAt, size int64) error {
-	if err := os.MkdirAll(s.dataDir, 0o755); err != nil {
-		return err
-	}
-	tmp := s.packagePath(id) + ".tmp"
-	out, err := os.Create(tmp)
-	if err != nil {
-		return err
-	}
-	if _, err := io.Copy(out, io.NewSectionReader(f, 0, size)); err != nil {
-		out.Close()
-		os.Remove(tmp)
-		return err
-	}
-	if err := out.Close(); err != nil {
-		os.Remove(tmp)
-		return err
-	}
-	return os.Rename(tmp, s.packagePath(id))
 }
 
 func (s *Server) handleMySubmissions(w http.ResponseWriter, r *http.Request, account string) {
@@ -356,27 +329,12 @@ func (s *Server) handleDecision(w http.ResponseWriter, r *http.Request) {
 // ---- account erasure (the website finaliser, after the deletion grace period) ----
 
 // handleEraseAccount keeps the account's published mods, credited to
-// "deleted user", and deletes its unpublished submissions (rows and package
-// files) and favourites. Files go first, so a failure leaves the rows for the
-// retry to find. Idempotent: 200 {"anonymised","deleted","favourites"}.
+// "deleted user", and deletes its unpublished submissions (rows and packages) and favourites. Package bytes go with their rows (ON DELETE CASCADE). Idempotent: 200 {"anonymised","deleted","favourites"}.
 func (s *Server) handleEraseAccount(w http.ResponseWriter, r *http.Request) {
 	account := r.PathValue("account")
 	if account == "" {
 		fail(w, 400, "account is required")
 		return
-	}
-	ids, err := s.st.UnpublishedBy(r.Context(), account)
-	if err != nil {
-		log.Printf("erase %s: list: %v", account, err)
-		fail(w, 500, "internal error")
-		return
-	}
-	for _, id := range ids {
-		if err := os.Remove(s.packagePath(id)); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			log.Printf("erase %s: package %s: %v", account, id, err)
-			fail(w, 503, "could not delete a package; retry")
-			return
-		}
 	}
 	res, err := s.st.EraseAccount(r.Context(), account)
 	if err != nil {
